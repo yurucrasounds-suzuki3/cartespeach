@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>美容室カルテ MVP</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f7f7f7;
+      margin: 0;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    }
+
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-weight: bold;
+      margin: 12px 0 6px;
+    }
+
+    input, textarea, button {
+      width: 100%;
+      box-sizing: border-box;
+      font-size: 16px;
+      border-radius: 10px;
+    }
+
+    input, textarea {
+      border: 1px solid #ccc;
+      padding: 12px;
+    }
+
+    textarea {
+      min-height: 90px;
+      resize: vertical;
+    }
+
+    button {
+      border: none;
+      padding: 14px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    .primary {
+      background: #0f766e;
+      color: white;
+    }
+
+    .secondary {
+      background: #e5e7eb;
+      color: #111827;
+    }
+
+    .status {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #374151;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .record-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 12px;
+      background: #fafafa;
+      margin-bottom: 12px;
+    }
+
+    .muted {
+      color: #6b7280;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>美容室カルテ MVP</h1>
+
+    <div class="card">
+      <label for="customerName">顧客名</label>
+      <input id="customerName" type="text" placeholder="山田花子">
+    </div>
+
+    <div class="card">
+      <p>例：今日はカットとカラー。暗めアッシュで赤み消し。頭皮しみやすい。次回6週間でリタッチ。</p>
+      <button id="recordBtn" class="primary">録音開始（60秒）</button>
+      <div class="status" id="status">待機中</div>
+      <div class="status" id="countdown"></div>
+
+      <label for="transcript">文字起こし結果</label>
+      <textarea id="transcript"></textarea>
+    </div>
+
+    <div class="card">
+      <label for="menu">施術</label>
+      <input id="menu" type="text">
+
+      <label for="color">色</label>
+      <input id="color" type="text">
+
+      <label for="length">長さ</label>
+      <input id="length" type="text">
+
+      <label for="concerns">悩み</label>
+      <input id="concerns" type="text">
+
+      <label for="caution">注意点</label>
+      <input id="caution" type="text">
+
+      <label for="next">次回提案</label>
+      <input id="next" type="text">
+
+      <label for="memo">メモ</label>
+      <textarea id="memo"></textarea>
+
+      <div class="row">
+        <button id="fillBtn" class="secondary">文字起こしから自動入力</button>
+        <button id="clearBtn" class="secondary">クリア</button>
+      </div>
+
+      <button id="saveBtn" class="primary">保存</button>
+    </div>
+
+    <div class="card">
+      <h2>保存済みカルテ</h2>
+      {% for r in records %}
+        <div class="record-item">
+          <div><strong>{{ r["customer_name"] }}</strong></div>
+          <div class="muted">{{ r["created_at"] }}</div>
+          <div>施術: {{ r["menu"] }}</div>
+          <div>色: {{ r["color"] }}</div>
+          <div>長さ: {{ r["length"] }}</div>
+          <div>悩み: {{ r["concerns"] }}</div>
+          <div>注意点: {{ r["caution"] }}</div>
+          <div>次回提案: {{ r["next_plan"] }}</div>
+          <div>メモ: {{ r["memo"] }}</div>
+          <div class="muted">文字起こし: {{ r["transcript"] }}</div>
+        </div>
+      {% else %}
+        <div class="muted">まだ保存されていません</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <script>
+    const customerNameEl = document.getElementById("customerName");
+    const transcriptEl = document.getElementById("transcript");
+    const menuEl = document.getElementById("menu");
+    const colorEl = document.getElementById("color");
+    const lengthEl = document.getElementById("length");
+    const concernsEl = document.getElementById("concerns");
+    const cautionEl = document.getElementById("caution");
+    const nextEl = document.getElementById("next");
+    const memoEl = document.getElementById("memo");
+
+    const recordBtn = document.getElementById("recordBtn");
+    const fillBtn = document.getElementById("fillBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const saveBtn = document.getElementById("saveBtn");
+    const statusEl = document.getElementById("status");
+    const countdownEl = document.getElementById("countdown");
+
+    let recognition = null;
+    let isRecording = false;
+    let stopTimer = null;
+    let countdownTimer = null;
+    let remaining = 60;
+
+    function parseKarteFromText(text) {
+      const t = text.replace(/\s+/g, "");
+      const result = {
+        menu: [],
+        color: "",
+        length: "",
+        concerns: [],
+        caution: "",
+        next: "",
+        memo: text
+      };
+
+      function includesAny(words) {
+        return words.some(w => t.includes(w));
+      }
+
+      function addMenu(label, words) {
+        if (includesAny(words) && !result.menu.includes(label)) result.menu.push(label);
+      }
+
+      function addConcern(label, words) {
+        if (includesAny(words) && !result.concerns.includes(label)) result.concerns.push(label);
+      }
+
+      addMenu("カット", ["カット", "切って", "整えて", "毛量調整", "すいて"]);
+      addMenu("カラー", ["カラー", "染め", "染める"]);
+      addMenu("リタッチ", ["リタッチ", "根元"]);
+      addMenu("トリートメント", ["トリートメント", "ケア", "補修", "髪質改善"]);
+      addMenu("縮毛矯正", ["縮毛矯正", "ストレート", "酸性ストレート"]);
+      addMenu("パーマ", ["パーマ", "デジパ", "デジタルパーマ"]);
+
+      if (t.includes("アッシュ")) result.color = "アッシュ";
+      if (t.includes("ベージュ")) result.color = "ベージュ";
+      if (t.includes("グレージュ")) result.color = "グレージュ";
+      if (t.includes("暗め")) result.color = result.color ? `暗め ${result.color}` : "暗め";
+
+      if (t.includes("ボブ")) result.length = "ボブ";
+      else if (t.includes("ショート")) result.length = "ショート";
+      else if (t.includes("ロング")) result.length = "ロング";
+      else if (t.includes("ミディアム")) result.length = "ミディアム";
+      if (t.includes("肩")) result.length = result.length ? `${result.length}（肩くらい）` : "肩くらい";
+
+      addConcern("広がり/うねり", ["広がり", "うねり", "まとまらない", "膨らむ"]);
+      addConcern("白髪", ["白髪"]);
+      addConcern("ダメージ", ["ダメージ", "傷み"]);
+      addConcern("乾燥", ["乾燥", "パサつき"]);
+
+      if (includesAny(["しみ", "敏感", "かぶれ", "かゆ"])) {
+        result.caution = "頭皮が敏感/しみやすい";
+      }
+
+      const match = text.match(/(\d+)(週間|週|ヶ月|か月|月)/);
+      const period = match ? `${match[1]}${match[2]}` : "";
+      if (period) result.next = period;
+
+      return result;
+    }
+
+    function fillFieldsFromTranscript() {
+      const parsed = parseKarteFromText(transcriptEl.value);
+      menuEl.value = parsed.menu.join(" / ");
+      colorEl.value = parsed.color;
+      lengthEl.value = parsed.length;
+      concernsEl.value = parsed.concerns.join(" / ");
+      cautionEl.value = parsed.caution;
+      nextEl.value = parsed.next;
+      memoEl.value = parsed.memo;
+      statusEl.textContent = "自動入力しました";
+    }
+
+    function clearAll() {
+      customerNameEl.value = "";
+      transcriptEl.value = "";
+      menuEl.value = "";
+      colorEl.value = "";
+      lengthEl.value = "";
+      concernsEl.value = "";
+      cautionEl.value = "";
+      nextEl.value = "";
+      memoEl.value = "";
+      statusEl.textContent = "クリアしました";
+      countdownEl.textContent = "";
+    }
+
+    function stopRecording() {
+      if (recognition && isRecording) recognition.stop();
+      isRecording = false;
+      clearTimeout(stopTimer);
+      clearInterval(countdownTimer);
+      countdownEl.textContent = "";
+      recordBtn.textContent = "録音開始（60秒）";
+    }
+
+    function startRecording() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      if (!SpeechRecognition) {
+        alert("このブラウザは音声認識に対応していません。Chromeを使ってください。");
+        return;
+      }
+
+      recognition = new SpeechRecognition();
+      recognition.lang = "ja-JP";
+      recognition.interimResults = true;
+      recognition.continuous = true;
+
+      transcriptEl.value = "";
+      isRecording = true;
+      remaining = 60;
+      statusEl.textContent = "音声入力中...";
+      countdownEl.textContent = `残り: ${remaining}秒`;
+      recordBtn.textContent = "停止して反映";
+
+      recognition.onresult = (event) => {
+        let text = "";
+        for (let i = 0; i < event.results.length; i++) {
+          text += event.results[i][0].transcript;
+        }
+        transcriptEl.value = text;
+      };
+
+      recognition.onerror = (event) => {
+        statusEl.textContent = `音声認識エラー: ${event.error}`;
+        stopRecording();
+      };
+
+      recognition.onend = () => {
+        if (isRecording) {
+          isRecording = false;
+          fillFieldsFromTranscript();
+          statusEl.textContent = "文字起こし完了";
+          recordBtn.textContent = "録音開始（60秒）";
+        }
+      };
+
+      recognition.start();
+
+      stopTimer = setTimeout(() => {
+        stopRecording();
+        fillFieldsFromTranscript();
+        statusEl.textContent = "文字起こし完了";
+      }, 60000);
+
+      countdownTimer = setInterval(() => {
+        remaining--;
+        countdownEl.textContent = `残り: ${remaining}秒`;
+        if (remaining <= 0) clearInterval(countdownTimer);
+      }, 1000);
+    }
+
+    async function saveData() {
+      if (!customerNameEl.value.trim()) {
+        alert("顧客名を入れてください");
+        return;
+      }
+
+      const payload = {
+        customerName: customerNameEl.value.trim(),
+        menu: menuEl.value.trim(),
+        color: colorEl.value.trim(),
+        length: lengthEl.value.trim(),
+        concerns: concernsEl.value.trim(),
+        caution: cautionEl.value.trim(),
+        next: nextEl.value.trim(),
+        memo: memoEl.value.trim(),
+        transcript: transcriptEl.value.trim()
+      };
+
+      try {
+        const res = await fetch("/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          alert(data.message || "保存に失敗しました");
+          statusEl.textContent = "保存失敗";
+          return;
+        }
+
+        alert("保存しました");
+        window.location.reload();
+      } catch (e) {
+        console.error(e);
+        alert("通信エラーが起きました");
+      }
+    }
+
+    recordBtn.addEventListener("click", () => {
+      if (isRecording) {
+        stopRecording();
+        fillFieldsFromTranscript();
+        statusEl.textContent = "文字起こし完了";
+      } else {
+        startRecording();
+      }
+    });
+
+    fillBtn.addEventListener("click", fillFieldsFromTranscript);
+    clearBtn.addEventListener("click", clearAll);
+    saveBtn.addEventListener("click", saveData);
+  </script>
+</body>
+</html>
