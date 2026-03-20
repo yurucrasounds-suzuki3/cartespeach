@@ -17,43 +17,61 @@
   <button onclick="send()">保存</button>
 
 <script>
-const API_URL = "ここにAppsScriptのURL";
+const API_URL = "ここにAppsScriptの/exec URL";
 
 let recognition;
 
-function start(){
+function start() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    alert("このブラウザは音声認識に対応していません。Chromeで開いてください。");
+    return;
+  }
 
   recognition = new SpeechRecognition();
   recognition.lang = "ja-JP";
 
-  recognition.onresult = (e)=>{
+  recognition.onresult = (e) => {
     document.getElementById("text").value = e.results[0][0].transcript;
+  };
+
+  recognition.onerror = (e) => {
+    console.error(e);
+    document.getElementById("status").innerText = "音声認識エラー: " + e.error;
   };
 
   recognition.start();
   document.getElementById("status").innerText = "録音中...";
 }
 
-async function send(){
-  const data = {
-    customerName: document.getElementById("customerName").value,
-    transcript: document.getElementById("text").value,
-    menu: "",
-    color: "",
-    length: "",
-    concerns: "",
-    caution: "",
-    next: "",
-    memo: ""
-  };
+async function send() {
+  const params = new URLSearchParams();
+  params.append("customerName", document.getElementById("customerName").value);
+  params.append("transcript", document.getElementById("text").value);
+  params.append("menu", "");
+  params.append("color", "");
+  params.append("length", "");
+  params.append("concerns", "");
+  params.append("caution", "");
+  params.append("next", "");
+  params.append("memo", "");
 
-  await fetch(API_URL, {
-    method: "POST",
-    body: JSON.stringify(data)
-  });
+  try {
+    await fetch(API_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: params.toString()
+    });
 
-  alert("保存した");
+    alert("送信しました");
+  } catch (e) {
+    console.error(e);
+    alert("送信に失敗しました");
+  }
 }
 </script>
 </body>
